@@ -1,0 +1,52 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Stop EC2 instances tagged environment:uat on a schedule'
+
+Resources:
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaEC2Policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeInstances
+                  - ec2:StopInstances
+                Resource: '*'
+
+  StopEC2InstancesLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: stop_ec2_instances.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: python3.8
+      Code:
+        S3Bucket: <your-s3-bucket-name>
+        S3Key: <path/to/stop_ec2_instances.zip>
+      Timeout: 30
+
+  EventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: 'cron(0 17-9 * * ? *)'
+      Targets:
+        - Arn: !GetAtt StopEC2InstancesLambda.Arn
+          Id: 'TargetFunctionV1'
+      State: ENABLED
+
+  LambdaPermissionForEvents:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref StopEC2InstancesLambda
+      Action: 'lambda:InvokeFunction'
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt EventRule.Arn
